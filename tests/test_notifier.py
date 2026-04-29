@@ -84,33 +84,50 @@ def make_today_announcement(
     )
 
 
-def test_build_parent_payload_includes_today_summary_table() -> None:
+def test_build_parent_payload_includes_today_summary_table_block() -> None:
     payload = build_parent_payload(
         [make_announcement()],
         today_items=[make_today_announcement()],
         today=date(2026, 4, 29),
     )
 
-    block_text = "\n".join(block.get("text", {}).get("text", "") for block in payload["blocks"] if isinstance(block, dict))
-    assert "오늘 청약 공고 요약" in block_text
-    assert "2026-04-29 기준" in block_text
-    assert "이안 센트럴 제기동역" in block_text
-    assert "서울" in block_text
-    assert "임의공급" in block_text
+    text_blocks = [block.get("text", {}).get("text", "") for block in payload["blocks"] if isinstance(block, dict)]
+    merged_text = "\n".join(text_blocks)
+    assert "오늘 청약 공고 요약" in merged_text
+    assert "2026-04-29 기준" in merged_text
+
+    table_blocks = [
+        block
+        for attachment in payload["attachments"]
+        for block in attachment.get("blocks", [])
+        if block.get("type") == "table"
+    ]
+    assert len(table_blocks) == 1
+    table = table_blocks[0]
+    assert table["rows"][0][0]["text"] == "지역"
+    assert table["rows"][1][0]["text"] == "서울"
+    assert table["rows"][1][2]["text"] == "이안 센트럴 제기동역"
 
 
 def test_build_parent_payload_removes_new_summary_and_bolds_cheapest_price() -> None:
     payload = build_parent_payload([make_announcement()], today_items=[], today=date(2026, 4, 29))
 
-    blocks = payload["blocks"]
-    block_text = "\n".join(block.get("text", {}).get("text", "") for block in blocks if isinstance(block, dict))
-    assert "새로운 수도권 무순위/임의공급 공고를 감지했습니다." not in block_text
-    assert "동탄신도시 금강펜테리움 6차 센트럴파크(A59BL)" in block_text
-    assert "청약홈 바로가기" in block_text
-    assert "공급위치" in block_text
-    assert "경기도 화성시 동탄구 신동 822" in block_text
-    assert "공고일: 2026-04-29" in block_text
-    assert "*최저 분양가:* *48,660만원*" in block_text
+    parent_text = "\n".join(block.get("text", {}).get("text", "") for block in payload["blocks"] if isinstance(block, dict))
+    attachment_text = "\n".join(
+        block.get("text", {}).get("text", "")
+        for attachment in payload["attachments"]
+        for block in attachment.get("blocks", [])
+        if isinstance(block, dict)
+    )
+    merged = parent_text + "\n" + attachment_text
+
+    assert "새로운 수도권 무순위/임의공급 공고를 감지했습니다." not in merged
+    assert "동탄신도시 금강펜테리움 6차 센트럴파크(A59BL)" in merged
+    assert "청약홈 바로가기" in merged
+    assert "공급위치" in merged
+    assert "경기도 화성시 동탄구 신동 822" in merged
+    assert "공고일: 2026-04-29" in merged
+    assert "*최저 분양가:* *48,660만원*" in merged
 
 
 def test_build_parent_payload_sorts_new_items_by_nearest_subscription_date() -> None:
@@ -119,10 +136,14 @@ def test_build_parent_payload_sorts_new_items_by_nearest_subscription_date() -> 
     middle = make_announcement(name="내일 청약", subscription_period="2026-04-30 ~ 2026-04-30")
 
     payload = build_parent_payload([later, middle, soon], today_items=[], today=date(2026, 4, 29))
-    detail_texts = [block.get("text", {}).get("text", "") for block in payload["blocks"] if isinstance(block, dict)]
-    merged = "\n".join(detail_texts)
+    attachment_text = "\n".join(
+        block.get("text", {}).get("text", "")
+        for attachment in payload["attachments"]
+        for block in attachment.get("blocks", [])
+        if isinstance(block, dict)
+    )
 
-    assert merged.index("오늘 청약") < merged.index("내일 청약") < merged.index("다음 주 청약")
+    assert attachment_text.index("오늘 청약") < attachment_text.index("내일 청약") < attachment_text.index("다음 주 청약")
 
 
 def test_build_thread_payloads_include_supply_rows() -> None:

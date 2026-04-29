@@ -35,40 +35,14 @@ def build_parent_payload(
     ]
 
     if sorted_today_items:
-        blocks.extend(
-            [
-                {"type": "section", "text": {"type": "mrkdwn", "text": f"*오늘 청약 공고 요약* ({effective_today.isoformat()} 기준)"}},
-                {"type": "section", "text": {"type": "mrkdwn", "text": _build_today_table(sorted_today_items)}},
-            ]
-        )
-
-    for item in sorted_items:
-        alert_link = item.detail.notice_url if item.detail and item.detail.notice_url else item.detail_url
-        supply_location = item.detail.supply_location if item.detail and item.detail.supply_location else "-"
-        blocks.extend(
-            [
-                {"type": "divider"},
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": (
-                            f"*<{alert_link}|{item.name}>*\n"
-                            f"• 공급위치: {supply_location}\n"
-                            f"• 지역/구분: {item.region} / {item.category}\n"
-                            f"• 공고일: {item.posted_on}\n"
-                            f"• 청약기간: {item.subscription_period}\n"
-                            f"• 당첨자발표: {item.winner_date}\n"
-                            f"• *최저 분양가:* *{item.cheapest_price_summary}*"
-                        ),
-                    },
-                },
-            ]
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*오늘 청약 공고 요약* ({effective_today.isoformat()} 기준)"}}
         )
 
     return {
         "text": "수도권 무순위 청약 알림",
         "blocks": blocks,
+        "attachments": _build_parent_attachments(sorted_items, sorted_today_items),
     }
 
 
@@ -138,6 +112,67 @@ def build_thread_payloads(items: Sequence[Announcement], *, today: date | None =
     return payloads
 
 
+def _build_parent_attachments(items: Sequence[Announcement], today_items: Sequence[Announcement]) -> list[dict]:
+    attachments: list[dict] = []
+    if today_items:
+        attachments.append({"blocks": [_build_today_table_block(today_items)]})
+    if items:
+        attachments.append({"blocks": _build_new_item_blocks(items)})
+    return attachments
+
+
+def _build_new_item_blocks(items: Sequence[Announcement]) -> list[dict]:
+    blocks: list[dict] = []
+    for item in items:
+        alert_link = item.detail.notice_url if item.detail and item.detail.notice_url else item.detail_url
+        supply_location = item.detail.supply_location if item.detail and item.detail.supply_location else "-"
+        blocks.extend(
+            [
+                {"type": "divider"},
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*<{alert_link}|{item.name}>*\n"
+                            f"• 공급위치: {supply_location}\n"
+                            f"• 지역/구분: {item.region} / {item.category}\n"
+                            f"• 공고일: {item.posted_on}\n"
+                            f"• 청약기간: {item.subscription_period}\n"
+                            f"• 당첨자발표: {item.winner_date}\n"
+                            f"• *최저 분양가:* *{item.cheapest_price_summary}*"
+                        ),
+                    },
+                },
+            ]
+        )
+    return blocks
+
+
+def _build_today_table_block(items: Sequence[Announcement]) -> dict:
+    return {
+        "type": "table",
+        "column_settings": [
+            {"align": "center"},
+            {"align": "center"},
+            {"is_wrapped": True},
+            {"align": "center", "is_wrapped": True},
+        ],
+        "rows": [
+            [_raw_cell("지역"), _raw_cell("구분"), _raw_cell("주택명"), _raw_cell("청약기간")],
+            *[
+                [
+                    _raw_cell(item.region),
+                    _raw_cell(item.category),
+                    _raw_cell(item.name),
+                    _raw_cell(item.subscription_period),
+                ]
+                for item in items
+            ],
+        ],
+    }
+
+
 def _sort_announcements(items: Sequence[Announcement], *, today: date) -> list[Announcement]:
     return sorted(
         items,
@@ -150,23 +185,8 @@ def _sort_announcements(items: Sequence[Announcement], *, today: date) -> list[A
     )
 
 
-def _build_today_table(items: Sequence[Announcement]) -> str:
-    rows = [
-        (item.region, item.category, item.name, item.subscription_period)
-        for item in items
-    ]
-    headers = ("지역", "구분", "주택명", "청약기간")
-    widths = [len(header) for header in headers]
-    for row in rows:
-        for idx, value in enumerate(row):
-            widths[idx] = max(widths[idx], len(value))
-
-    def fmt(row: tuple[str, str, str, str]) -> str:
-        return " | ".join(value.ljust(widths[idx]) for idx, value in enumerate(row))
-
-    table_lines = [fmt(headers), "-+-".join("-" * width for width in widths)]
-    table_lines.extend(fmt(row) for row in rows)
-    return "```\n" + "\n".join(table_lines) + "\n```"
+def _raw_cell(text: str) -> dict:
+    return {"type": "raw_text", "text": text}
 
 
 def _format_supply_item_line(item: SupplyItem) -> str:
@@ -227,6 +247,8 @@ def _post_chat_message(
         "text": payload["text"],
         "blocks": payload["blocks"],
     }
+    if payload.get("attachments"):
+        body["attachments"] = payload["attachments"]
     if thread_ts is not None:
         body["thread_ts"] = thread_ts
     response = requests.post(
