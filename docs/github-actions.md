@@ -5,6 +5,8 @@
 레포지토리의 **Settings → Secrets and variables → Actions** 에서 아래 secret을 추가하세요.
 
 - `SLACK_WEBHOOK_URL`: Slack incoming webhook URL
+- `SLACK_BOT_TOKEN` *(optional)*: thread reply를 위한 Slack Bot token
+- `SLACK_CHANNEL_ID` *(optional)*: thread reply를 달 대상 channel ID
 
 ## 2. 워크플로 파일
 

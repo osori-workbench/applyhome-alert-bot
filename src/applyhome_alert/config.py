@@ -10,6 +10,8 @@ class Settings:
     slack_webhook_url: str
     include_immediate_supply: bool = False
     db_path: Path = Path("data/alerts.db")
+    slack_bot_token: str | None = None
+    slack_channel_id: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -21,8 +23,12 @@ class Settings:
             "on",
         }
         db_path = Path(os.environ.get("DB_PATH", "data/alerts.db"))
+        slack_bot_token = os.environ.get("SLACK_BOT_TOKEN") or None
+        slack_channel_id = os.environ.get("SLACK_CHANNEL_ID") or None
         return cls(
             slack_webhook_url=webhook_url,
             include_immediate_supply=include_immediate_supply,
             db_path=db_path,
+            slack_bot_token=slack_bot_token,
+            slack_channel_id=slack_channel_id,
         )

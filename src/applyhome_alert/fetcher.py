@@ -3,14 +3,21 @@ from __future__ import annotations
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import sync_playwright
+
+from .models import Announcement
+from .parser import parse_detail_html
+
+LIST_URL = "https://www.applyhome.co.kr/ai/aia/selectAPTRemndrLttotPblancListView.do"
+DETAIL_URL = "https://www.applyhome.co.kr/ai/aia/selectAPTRemndrLttotPblancDetailView.do"
+BASE_URL = "https://www.applyhome.co.kr"
 
 
 def extract_rows_from_html(html: str, *, base_url: str) -> list[dict[str, str]]:
     soup = BeautifulSoup(html, "html.parser")
     rows: list[dict[str, str]] = []
 
-    for tr in soup.select("table tbody tr"):
+    for tr in soup.select("tr[data-hmno][data-pbno]"):
         cells = tr.find_all("td")
         if len(cells) < 7:
             continue
@@ -23,26 +30,56 @@ def extract_rows_from_html(html: str, *, base_url: str) -> list[dict[str, str]]:
                 "name": cells[2].get_text(strip=True),
                 "provider": cells[3].get_text(strip=True),
                 "posted_on": cells[4].get_text(strip=True),
-                "subscription_period": cells[5].get_text(strip=True),
+                "subscription_period": cells[5].get_text(" ", strip=True),
                 "winner_date": cells[6].get_text(strip=True),
                 "detail_url": urljoin(base_url, link.get("href", "")) if link else base_url,
+                "house_manage_no": tr.get("data-hmno", ""),
+                "pblanc_no": tr.get("data-pbno", ""),
             }
         )
 
     return rows
 
 
-def _load_target_page(page: Page) -> None:
-    page.goto("https://www.applyhome.co.kr/co/coa/selectMainView.do", wait_until="domcontentloaded")
-    page.get_by_role("link", name="APT 잔여세대").click()
-    page.wait_for_timeout(1500)
-
-
 def fetch_rows() -> list[dict[str, str]]:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
-        _load_target_page(page)
+        page.goto(LIST_URL, wait_until="domcontentloaded")
         html = page.content()
         browser.close()
-    return extract_rows_from_html(html, base_url="https://www.applyhome.co.kr")
+    return extract_rows_from_html(html, base_url=BASE_URL)
+
+
+def fetch_announcement_details(items: list[Announcement]) -> list[Announcement]:
+    if not items:
+        return []
+
+    with sync_playwright() as playwright:
+        request_context = playwright.request.new_context(base_url=BASE_URL)
+        enriched_items: list[Announcement] = []
+        for item in items:
+            if not item.house_manage_no or not item.pblanc_no:
+                enriched_items.append(item)
+                continue
+            response = request_context.post(
+                DETAIL_URL,
+                form={
+                    "houseManageNo": item.house_manage_no,
+                    "pblancNo": item.pblanc_no,
+                    "gvPgmId": "AIA03M01",
+                },
+                headers={"Referer": LIST_URL},
+            )
+            body = response.text()
+            _ensure_success_status(response.status, body)
+            detail = parse_detail_html(body, base_url=BASE_URL)
+            enriched_items.append(item.with_detail(detail))
+        request_context.dispose()
+    return enriched_items
+
+
+def _ensure_success_status(status: int, body: str) -> None:
+    if 200 <= status < 300:
+        return
+    raise RuntimeError(f"ApplyHome detail request failed: status={status}, body={body[:200]}")
