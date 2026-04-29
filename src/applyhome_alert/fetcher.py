@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -11,6 +12,7 @@ from .parser import parse_detail_html
 LIST_URL = "https://www.applyhome.co.kr/ai/aia/selectAPTRemndrLttotPblancListView.do"
 DETAIL_URL = "https://www.applyhome.co.kr/ai/aia/selectAPTRemndrLttotPblancDetailView.do"
 BASE_URL = "https://www.applyhome.co.kr"
+_PAGE_INDEX_RE = re.compile(r"pageIndex=(\d+)")
 
 
 def extract_rows_from_html(html: str, *, base_url: str) -> list[dict[str, str]]:
@@ -41,14 +43,32 @@ def extract_rows_from_html(html: str, *, base_url: str) -> list[dict[str, str]]:
     return rows
 
 
+def extract_total_pages_from_html(html: str) -> int:
+    soup = BeautifulSoup(html, "html.parser")
+    page_indexes: list[int] = []
+    for link in soup.select('a[href*="pageIndex="]'):
+        href = link.get("href", "")
+        match = _PAGE_INDEX_RE.search(href)
+        if match:
+            page_indexes.append(int(match.group(1)))
+    return max(page_indexes, default=1)
+
+
 def fetch_rows() -> list[dict[str, str]]:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
         page.goto(LIST_URL, wait_until="domcontentloaded")
-        html = page.content()
+        first_html = page.content()
+        total_pages = extract_total_pages_from_html(first_html)
+        rows = extract_rows_from_html(first_html, base_url=BASE_URL)
+
+        for page_index in range(2, total_pages + 1):
+            page.goto(f"{LIST_URL}?pageIndex={page_index}", wait_until="domcontentloaded")
+            rows.extend(extract_rows_from_html(page.content(), base_url=BASE_URL))
+
         browser.close()
-    return extract_rows_from_html(html, base_url=BASE_URL)
+    return rows
 
 
 def fetch_announcement_details(items: list[Announcement]) -> list[Announcement]:

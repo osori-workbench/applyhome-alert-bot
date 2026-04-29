@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 
 import requests
 
 from .models import Announcement, SupplyItem
 
+APPLYHOME_LIST_URL = "https://www.applyhome.co.kr/ai/aia/selectAPTRemndrLttotPblancListView.do"
 
-def build_parent_payload(items: Sequence[Announcement]) -> dict:
-    summary_lines = [f"• {item.name} — 최저 분양가 {item.cheapest_price_summary}" for item in items]
+
+def build_parent_payload(
+    items: Sequence[Announcement],
+    *,
+    today_items: Sequence[Announcement],
+    today: date | None = None,
+) -> dict:
+    effective_today = today or date.today()
+    sorted_today_items = _sort_announcements(today_items, today=effective_today)
+    sorted_items = _sort_announcements(items, today=effective_today)
+
     blocks: list[dict] = [
         {
             "type": "header",
@@ -18,13 +29,22 @@ def build_parent_payload(items: Sequence[Announcement]) -> dict:
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "새로운 수도권 무순위/임의공급 공고를 감지했습니다.\n" + "\n".join(summary_lines),
+                "text": f"*<{APPLYHOME_LIST_URL}|청약홈 바로가기>*",
             },
         },
     ]
 
-    for item in items:
+    if sorted_today_items:
+        blocks.extend(
+            [
+                {"type": "section", "text": {"type": "mrkdwn", "text": f"*오늘 청약 공고 요약* ({effective_today.isoformat()} 기준)"}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": _build_today_table(sorted_today_items)}},
+            ]
+        )
+
+    for item in sorted_items:
         alert_link = item.detail.notice_url if item.detail and item.detail.notice_url else item.detail_url
+        supply_location = item.detail.supply_location if item.detail and item.detail.supply_location else "-"
         blocks.extend(
             [
                 {"type": "divider"},
@@ -34,19 +54,14 @@ def build_parent_payload(items: Sequence[Announcement]) -> dict:
                         "type": "mrkdwn",
                         "text": (
                             f"*<{alert_link}|{item.name}>*\n"
+                            f"• 공급위치: {supply_location}\n"
                             f"• 지역/구분: {item.region} / {item.category}\n"
+                            f"• 공고일: {item.posted_on}\n"
                             f"• 청약기간: {item.subscription_period}\n"
                             f"• 당첨자발표: {item.winner_date}\n"
-                            f"• 최저 분양가: {item.cheapest_price_summary}"
+                            f"• *최저 분양가:* *{item.cheapest_price_summary}*"
                         ),
                     },
-                    "fields": [
-                        {"type": "mrkdwn", "text": f"*시행사*\n{item.provider}"},
-                        {
-                            "type": "mrkdwn",
-                            "text": f"*공고일*\n{item.posted_on}",
-                        },
-                    ],
                 },
             ]
         )
@@ -57,13 +72,15 @@ def build_parent_payload(items: Sequence[Announcement]) -> dict:
     }
 
 
-def build_thread_payloads(items: Sequence[Announcement]) -> list[dict]:
+def build_thread_payloads(items: Sequence[Announcement], *, today: date | None = None) -> list[dict]:
+    effective_today = today or date.today()
     payloads: list[dict] = []
-    for item in items:
+    for item in _sort_announcements(items, today=effective_today):
         detail = item.detail
         if detail is None:
             continue
         lines = [_format_supply_item_line(supply_item) for supply_item in detail.supply_items]
+        detail_link = detail.notice_url or item.detail_url
         blocks = [
             {
                 "type": "section",
@@ -71,6 +88,7 @@ def build_thread_payloads(items: Sequence[Announcement]) -> list[dict]:
                     "type": "mrkdwn",
                     "text": (
                         f"*상세 공급내역 · {item.name}*\n"
+                        f"• <{detail_link}|청약홈 입주자모집공고>\n"
                         f"• 공급위치: {detail.supply_location or '-'}\n"
                         f"• 공급규모: {detail.supply_scale or '-'}\n"
                         f"• 계약일: {detail.contract_date or '-'}\n"
@@ -86,6 +104,18 @@ def build_thread_payloads(items: Sequence[Announcement]) -> list[dict]:
                 },
             },
         ]
+        if _has_inquiry_price(detail.supply_items):
+            blocks.append(
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": "사업주체 문의는 청약홈 상세 페이지 기준 표기입니다. 정확한 분양가는 상단 청약홈 입주자모집공고 링크에서 다시 확인해 주세요.",
+                        }
+                    ],
+                }
+            )
         if detail.notice_url:
             blocks.append(
                 {
@@ -108,9 +138,44 @@ def build_thread_payloads(items: Sequence[Announcement]) -> list[dict]:
     return payloads
 
 
+def _sort_announcements(items: Sequence[Announcement], *, today: date) -> list[Announcement]:
+    return sorted(
+        items,
+        key=lambda item: (
+            0 if item.is_open_on(today) else max((item.subscription_start_date - today).days, 0),
+            item.subscription_end_date,
+            item.subscription_start_date,
+            item.name,
+        ),
+    )
+
+
+def _build_today_table(items: Sequence[Announcement]) -> str:
+    rows = [
+        (item.region, item.category, item.name, item.subscription_period)
+        for item in items
+    ]
+    headers = ("지역", "구분", "주택명", "청약기간")
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for idx, value in enumerate(row):
+            widths[idx] = max(widths[idx], len(value))
+
+    def fmt(row: tuple[str, str, str, str]) -> str:
+        return " | ".join(value.ljust(widths[idx]) for idx, value in enumerate(row))
+
+    table_lines = [fmt(headers), "-+-".join("-" * width for width in widths)]
+    table_lines.extend(fmt(row) for row in rows)
+    return "```\n" + "\n".join(table_lines) + "\n```"
+
+
 def _format_supply_item_line(item: SupplyItem) -> str:
     note = f" · {item.note}" if item.note else ""
     return f"• 주택형 {item.housing_type} / {item.supply_units}세대 / {item.sale_price}{note}"
+
+
+def _has_inquiry_price(items: Sequence[SupplyItem]) -> bool:
+    return any(item.price_value is None and "사업주체 문의" in item.sale_price for item in items)
 
 
 def send_slack_webhook(webhook_url: str, payload: dict, *, timeout: int = 15) -> None:
@@ -122,11 +187,13 @@ def send_slack_notifications(
     webhook_url: str,
     items: Sequence[Announcement],
     *,
+    today_items: Sequence[Announcement],
+    today: date | None = None,
     bot_token: str | None = None,
     channel_id: str | None = None,
     timeout: int = 15,
 ) -> None:
-    parent_payload = build_parent_payload(items)
+    parent_payload = build_parent_payload(items, today_items=today_items, today=today)
     if bot_token and channel_id:
         parent_ts = _post_chat_message(
             bot_token=bot_token,
@@ -134,7 +201,7 @@ def send_slack_notifications(
             payload=parent_payload,
             timeout=timeout,
         )
-        for thread_payload in build_thread_payloads(items):
+        for thread_payload in build_thread_payloads(items, today=today):
             _post_chat_message(
                 bot_token=bot_token,
                 channel_id=channel_id,

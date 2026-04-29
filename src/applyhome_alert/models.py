@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from datetime import date
 import re
 from typing import Self
 
@@ -74,6 +75,19 @@ class Announcement:
         if cheapest_item is None:
             return "정보 없음"
         return cheapest_item.sale_price or "정보 없음"
+
+    @property
+    def subscription_start_date(self) -> date:
+        start_text = self.subscription_period.split("~")[0].strip()
+        return date.fromisoformat(start_text)
+
+    @property
+    def subscription_end_date(self) -> date:
+        end_text = self.subscription_period.split("~")[-1].strip()
+        return date.fromisoformat(end_text)
+
+    def is_open_on(self, target_date: date) -> bool:
+        return self.subscription_start_date <= target_date <= self.subscription_end_date
 
     def with_detail(self, detail: AnnouncementDetail) -> Self:
         return replace(self, detail=detail)

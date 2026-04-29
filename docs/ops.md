@@ -42,10 +42,10 @@ uv run python -m applyhome_alert.main
 
 현재 프로젝트에는 cron에서 바로 호출할 수 있도록 `scripts/run_alert.sh`와 등록용 파일 `deploy/applyhome-alert.crontab`를 포함했습니다.
 
-매시 5분마다 실행:
+매일 오전 9시에 실행:
 
 ```cron
-5 * * * * /Users/osori/workbench/applyhome-alert-bot/scripts/run_alert.sh
+0 9 * * * /Users/osori/workbench/applyhome-alert-bot/scripts/run_alert.sh
 ```
 
 적용 명령:

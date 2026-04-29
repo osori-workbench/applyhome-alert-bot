@@ -141,7 +141,7 @@ crontab /Users/osori/workbench/applyhome-alert-bot/deploy/applyhome-alert.cronta
 현재 기본 스케줄:
 
 ```cron
-5 * * * * /Users/osori/workbench/applyhome-alert-bot/scripts/run_alert.sh
+0 9 * * * /Users/osori/workbench/applyhome-alert-bot/scripts/run_alert.sh
 ```
 
 로그 파일:

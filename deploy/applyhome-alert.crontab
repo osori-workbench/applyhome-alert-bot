@@ -1,1 +1,1 @@
-5 * * * * /Users/osori/workbench/applyhome-alert-bot/scripts/run_alert.sh # applyhome-alert-bot
+0 9 * * * /Users/osori/workbench/applyhome-alert-bot/scripts/run_alert.sh # applyhome-alert-bot
