@@ -47,3 +47,17 @@ def test_parse_detail_html_extracts_inquiry_price() -> None:
     assert detail.supply_items[0].supply_units == "1"
     assert detail.supply_items[0].sale_price == "사업주체 문의"
     assert detail.supply_items[0].price_value is None
+
+
+
+def test_parse_detail_html_extracts_sale_price_table() -> None:
+    html = Path("tests/fixtures/detail_sale_price_table.html").read_text(encoding="utf-8")
+
+    detail = parse_detail_html(html, base_url="https://www.applyhome.co.kr")
+
+    assert detail.move_in_month == "2029.09"
+    assert len(detail.supply_items) == 8
+    assert detail.supply_items[0].housing_type == "049.9890A"
+    assert detail.supply_items[0].supply_units == "12"
+    assert detail.supply_items[0].sale_price == "68,350만원"
+    assert detail.supply_items[0].price_value == 68350

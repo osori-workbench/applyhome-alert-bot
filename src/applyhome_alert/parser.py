@@ -79,8 +79,13 @@ def _parse_supply_items(soup: BeautifulSoup, *, move_in_month: str) -> list[Supp
         headers = [th.get_text(" ", strip=True) for th in table.select("thead th")]
         if not headers or "주택형" not in headers:
             continue
-        if "공급금액(최고가 기준)" in headers:
-            return _parse_price_table(table, supply_units_by_type=supply_units_by_type)
+        if "공급금액(최고가 기준)" in headers or "분양가" in headers:
+            return _parse_price_table(
+                table,
+                headers=headers,
+                supply_units_by_type=supply_units_by_type,
+                move_in_month=move_in_month,
+            )
         if "공급세대수" in headers and "비고" in headers:
             return _parse_inquiry_table(table, headers, move_in_month=move_in_month)
     return []
@@ -105,20 +110,31 @@ def _parse_supply_units_by_type(soup: BeautifulSoup) -> dict[str, str]:
     return supply_units
 
 
-def _parse_price_table(table, *, supply_units_by_type: dict[str, str]) -> list[SupplyItem]:
+def _parse_price_table(
+    table,
+    *,
+    headers: list[str],
+    supply_units_by_type: dict[str, str],
+    move_in_month: str,
+) -> list[SupplyItem]:
     rows: list[SupplyItem] = []
+    type_index = headers.index("주택형")
+    price_header = "공급금액(최고가 기준)" if "공급금액(최고가 기준)" in headers else "분양가"
+    price_index = headers.index(price_header)
+    units_index = headers.index("공급세대수") if "공급세대수" in headers else None
+
     for tr in table.select("tbody tr"):
         cells = [td.get_text(" ", strip=True) for td in tr.find_all("td")]
-        if len(cells) < 3:
+        if len(cells) <= price_index or len(cells) <= type_index:
             continue
-        housing_type = cells[0]
+        housing_type = cells[type_index]
         rows.append(
             SupplyItem(
                 housing_type=housing_type,
-                supply_units=supply_units_by_type.get(housing_type, "-"),
-                sale_price=_normalize_price(cells[1]),
+                supply_units=(cells[units_index] if units_index is not None and len(cells) > units_index else supply_units_by_type.get(housing_type, "-")),
+                sale_price=_normalize_price(cells[price_index]),
                 note="",
-                move_in_month=cells[2],
+                move_in_month=move_in_month,
             )
         )
     return rows
