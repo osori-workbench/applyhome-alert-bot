@@ -1,0 +1,53 @@
+name: ApplyHome Alert
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "5 * * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  run-alert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      INCLUDE_IMMEDIATE_SUPPLY: "true"
+      DB_PATH: data/alerts.db
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Restore alert database cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data/alerts.db
+          key: applyhome-alert-db-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            applyhome-alert-db-${{ github.ref_name }}-
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Install Playwright browser
+        run: uv run playwright install chromium
+
+      - name: Run alert bot
+        run: uv run python -m applyhome_alert.main
+
+      - name: Save alert database cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/alerts.db
+          key: applyhome-alert-db-${{ github.ref_name }}-${{ github.run_id }}
