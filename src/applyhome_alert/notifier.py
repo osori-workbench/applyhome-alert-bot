@@ -38,13 +38,13 @@ def build_parent_payload(
         blocks.append(
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*오늘 청약 공고 요약* ({effective_today.isoformat()} 기준)"}}
         )
+        blocks.extend(_build_today_summary_blocks(sorted_today_items))
 
     blocks.extend(_build_new_item_blocks(sorted_items))
 
     return {
         "text": "수도권 무순위 청약 알림",
         "blocks": blocks,
-        "attachments": _build_parent_attachments(sorted_today_items),
     }
 
 
@@ -114,11 +114,30 @@ def build_thread_payloads(items: Sequence[Announcement], *, today: date | None =
     return payloads
 
 
-def _build_parent_attachments(today_items: Sequence[Announcement]) -> list[dict]:
-    attachments: list[dict] = []
-    if today_items:
-        attachments.append({"blocks": [_build_today_table_block(today_items)]})
-    return attachments
+def _build_today_summary_blocks(items: Sequence[Announcement]) -> list[dict]:
+    blocks: list[dict] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*지역* | *구분* | *주택명* | *청약기간*",
+            },
+        }
+    ]
+    for item in items:
+        blocks.append(
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"{item.region} | {item.category} | "
+                        f"<{item.detail_url}|{item.name}> | {item.subscription_period}"
+                    ),
+                },
+            }
+        )
+    return blocks
 
 
 def _build_new_item_blocks(items: Sequence[Announcement]) -> list[dict]:
@@ -149,30 +168,6 @@ def _build_new_item_blocks(items: Sequence[Announcement]) -> list[dict]:
     return blocks
 
 
-def _build_today_table_block(items: Sequence[Announcement]) -> dict:
-    return {
-        "type": "table",
-        "column_settings": [
-            {"align": "center"},
-            {"align": "center"},
-            {"is_wrapped": True},
-            {"align": "center", "is_wrapped": True},
-        ],
-        "rows": [
-            [_raw_cell("지역"), _raw_cell("구분"), _raw_cell("주택명"), _raw_cell("청약기간")],
-            *[
-                [
-                    _raw_cell(item.region),
-                    _raw_cell(item.category),
-                    _raw_cell(item.name),
-                    _raw_cell(item.subscription_period),
-                ]
-                for item in items
-            ],
-        ],
-    }
-
-
 def _sort_announcements(items: Sequence[Announcement], *, today: date) -> list[Announcement]:
     return sorted(
         items,
@@ -183,10 +178,6 @@ def _sort_announcements(items: Sequence[Announcement], *, today: date) -> list[A
             item.name,
         ),
     )
-
-
-def _raw_cell(text: str) -> dict:
-    return {"type": "raw_text", "text": text}
 
 
 def _format_supply_item_line(item: SupplyItem) -> str:

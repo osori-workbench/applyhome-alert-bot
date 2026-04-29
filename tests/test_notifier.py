@@ -84,7 +84,7 @@ def make_today_announcement(
     )
 
 
-def test_build_parent_payload_includes_today_summary_table_block() -> None:
+def test_build_parent_payload_includes_today_summary_directly_in_top_level_blocks() -> None:
     payload = build_parent_payload(
         [make_announcement()],
         today_items=[make_today_announcement()],
@@ -95,37 +95,26 @@ def test_build_parent_payload_includes_today_summary_table_block() -> None:
     merged_text = "\n".join(text_blocks)
     assert "오늘 청약 공고 요약" in merged_text
     assert "2026-04-29 기준" in merged_text
-
-    table_blocks = [
-        block
-        for attachment in payload["attachments"]
-        for block in attachment.get("blocks", [])
-        if block.get("type") == "table"
-    ]
-    assert len(table_blocks) == 1
-    table = table_blocks[0]
-    assert table["rows"][0][0]["text"] == "지역"
-    assert table["rows"][1][0]["text"] == "서울"
-    assert table["rows"][1][2]["text"] == "이안 센트럴 제기동역"
+    assert "*지역* | *구분* | *주택명* | *청약기간*" in merged_text
+    assert "서울 | 임의공급 | <https://example.com/today|이안 센트럴 제기동역> | 2026-04-29 ~ 2026-04-29" in merged_text
+    assert "attachments" not in payload
 
 
-def test_build_parent_payload_keeps_new_items_in_top_level_blocks() -> None:
-    payload = build_parent_payload([make_announcement()], today_items=[], today=date(2026, 4, 29))
+def test_build_parent_payload_keeps_new_items_below_today_summary_in_top_level_blocks() -> None:
+    payload = build_parent_payload(
+        [make_announcement(name="내일 청약")],
+        today_items=[make_today_announcement(name="오늘 청약")],
+        today=date(2026, 4, 29),
+    )
 
     top_level_text = "\n".join(
         block.get("text", {}).get("text", "")
         for block in payload["blocks"]
         if isinstance(block, dict)
     )
-    attachment_text = "\n".join(
-        block.get("text", {}).get("text", "")
-        for attachment in payload["attachments"]
-        for block in attachment.get("blocks", [])
-        if isinstance(block, dict)
-    )
 
-    assert "동탄신도시 금강펜테리움 6차 센트럴파크(A59BL)" in top_level_text
-    assert "동탄신도시 금강펜테리움 6차 센트럴파크(A59BL)" not in attachment_text
+    assert top_level_text.index("오늘 청약 공고 요약") < top_level_text.index("*지역* | *구분* | *주택명* | *청약기간*")
+    assert top_level_text.index("오늘 청약") < top_level_text.index("내일 청약")
 
 
 def test_build_parent_payload_removes_new_summary_and_bolds_cheapest_price() -> None:
