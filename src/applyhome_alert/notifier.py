@@ -39,10 +39,12 @@ def build_parent_payload(
             {"type": "section", "text": {"type": "mrkdwn", "text": f"*오늘 청약 공고 요약* ({effective_today.isoformat()} 기준)"}}
         )
 
+    blocks.extend(_build_new_item_blocks(sorted_items))
+
     return {
         "text": "수도권 무순위 청약 알림",
         "blocks": blocks,
-        "attachments": _build_parent_attachments(sorted_items, sorted_today_items),
+        "attachments": _build_parent_attachments(sorted_today_items),
     }
 
 
@@ -112,12 +114,10 @@ def build_thread_payloads(items: Sequence[Announcement], *, today: date | None =
     return payloads
 
 
-def _build_parent_attachments(items: Sequence[Announcement], today_items: Sequence[Announcement]) -> list[dict]:
+def _build_parent_attachments(today_items: Sequence[Announcement]) -> list[dict]:
     attachments: list[dict] = []
     if today_items:
         attachments.append({"blocks": [_build_today_table_block(today_items)]})
-    if items:
-        attachments.append({"blocks": _build_new_item_blocks(items)})
     return attachments
 
 

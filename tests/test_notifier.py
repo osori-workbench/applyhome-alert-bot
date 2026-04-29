@@ -109,17 +109,33 @@ def test_build_parent_payload_includes_today_summary_table_block() -> None:
     assert table["rows"][1][2]["text"] == "이안 센트럴 제기동역"
 
 
-def test_build_parent_payload_removes_new_summary_and_bolds_cheapest_price() -> None:
+def test_build_parent_payload_keeps_new_items_in_top_level_blocks() -> None:
     payload = build_parent_payload([make_announcement()], today_items=[], today=date(2026, 4, 29))
 
-    parent_text = "\n".join(block.get("text", {}).get("text", "") for block in payload["blocks"] if isinstance(block, dict))
+    top_level_text = "\n".join(
+        block.get("text", {}).get("text", "")
+        for block in payload["blocks"]
+        if isinstance(block, dict)
+    )
     attachment_text = "\n".join(
         block.get("text", {}).get("text", "")
         for attachment in payload["attachments"]
         for block in attachment.get("blocks", [])
         if isinstance(block, dict)
     )
-    merged = parent_text + "\n" + attachment_text
+
+    assert "동탄신도시 금강펜테리움 6차 센트럴파크(A59BL)" in top_level_text
+    assert "동탄신도시 금강펜테리움 6차 센트럴파크(A59BL)" not in attachment_text
+
+
+def test_build_parent_payload_removes_new_summary_and_bolds_cheapest_price() -> None:
+    payload = build_parent_payload([make_announcement()], today_items=[], today=date(2026, 4, 29))
+
+    merged = "\n".join(
+        block.get("text", {}).get("text", "")
+        for block in payload["blocks"]
+        if isinstance(block, dict)
+    )
 
     assert "새로운 수도권 무순위/임의공급 공고를 감지했습니다." not in merged
     assert "동탄신도시 금강펜테리움 6차 센트럴파크(A59BL)" in merged
@@ -136,14 +152,13 @@ def test_build_parent_payload_sorts_new_items_by_nearest_subscription_date() -> 
     middle = make_announcement(name="내일 청약", subscription_period="2026-04-30 ~ 2026-04-30")
 
     payload = build_parent_payload([later, middle, soon], today_items=[], today=date(2026, 4, 29))
-    attachment_text = "\n".join(
+    top_level_text = "\n".join(
         block.get("text", {}).get("text", "")
-        for attachment in payload["attachments"]
-        for block in attachment.get("blocks", [])
+        for block in payload["blocks"]
         if isinstance(block, dict)
     )
 
-    assert attachment_text.index("오늘 청약") < attachment_text.index("내일 청약") < attachment_text.index("다음 주 청약")
+    assert top_level_text.index("오늘 청약") < top_level_text.index("내일 청약") < top_level_text.index("다음 주 청약")
 
 
 def test_build_thread_payloads_include_supply_rows() -> None:
