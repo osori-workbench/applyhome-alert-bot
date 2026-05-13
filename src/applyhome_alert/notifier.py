@@ -23,7 +23,7 @@ def build_parent_payload(
     blocks: list[dict] = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": "수도권 무순위 청약 알림"},
+            "text": {"type": "plain_text", "text": "수도권 청약 알림"},
         },
         {
             "type": "section",
@@ -43,7 +43,7 @@ def build_parent_payload(
     blocks.extend(_build_new_item_blocks(sorted_items))
 
     return {
-        "text": "수도권 무순위 청약 알림",
+        "text": "수도권 청약 알림",
         "blocks": blocks,
     }
 

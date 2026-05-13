@@ -74,3 +74,36 @@ def test_filter_keeps_only_current_or_upcoming_subscription_periods() -> None:
     )
 
     assert [item.name for item in result] == ["오늘마감"]
+
+
+def test_filter_includes_illegal_resale_supply_items() -> None:
+    items = [
+        Announcement(
+            region="서울",
+            category="불법행위 재공급",
+            name="래미안 라그란데",
+            provider="X",
+            posted_on="2026-05-04",
+            subscription_period="2026-05-12 ~ 2026-05-13",
+            winner_date="2026-05-18",
+            detail_url="https://example.com/raemian",
+        ),
+        Announcement(
+            region="서울",
+            category="임의공급",
+            name="이안 센트럴 제기동역",
+            provider="Y",
+            posted_on="2026-04-27",
+            subscription_period="2026-05-13 ~ 2026-05-13",
+            winner_date="2026-05-20",
+            detail_url="https://example.com/ian",
+        ),
+    ]
+
+    result = filter_target_announcements(
+        items,
+        include_immediate_supply=True,
+        today=date(2026, 5, 13),
+    )
+
+    assert [item.name for item in result] == ["래미안 라그란데", "이안 센트럴 제기동역"]

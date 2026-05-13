@@ -6,7 +6,7 @@ from datetime import date
 from .models import Announcement
 
 CAPITAL_REGIONS = {"서울", "경기", "인천"}
-DEFAULT_TARGET_CATEGORIES = {"무순위(사전)", "무순위(사후)"}
+DEFAULT_TARGET_CATEGORIES = {"무순위(사전)", "무순위(사후)", "불법행위 재공급"}
 
 
 def filter_target_announcements(
