@@ -6,7 +6,9 @@ from applyhome_alert.fetcher import (
     _ensure_success_status,
     extract_rows_from_html,
     extract_total_pages_from_html,
+    fetch_announcement_detail,
 )
+from applyhome_alert.models import Announcement, AnnouncementDetail, SupplyItem
 
 
 def test_extract_rows_from_fixture() -> None:
@@ -34,3 +36,37 @@ def test_extract_total_pages_from_html_reads_last_page_link() -> None:
 def test_ensure_success_status_raises_for_http_errors() -> None:
     with pytest.raises(RuntimeError):
         _ensure_success_status(500, "boom")
+
+
+def test_fetch_announcement_detail_returns_single_enriched_item(monkeypatch: pytest.MonkeyPatch) -> None:
+    announcement = Announcement(
+        region="경기",
+        category="무순위(사후)",
+        name="힐스테이트 금오 더퍼스트",
+        provider="금오생활권1구역주택재개발정비사업조합",
+        posted_on="2026-04-29",
+        subscription_period="2026-05-04 ~ 2026-05-04",
+        winner_date="2026-05-08",
+        detail_url="https://www.applyhome.co.kr/detail/1",
+        house_manage_no="2026910103",
+        pblanc_no="2026910103",
+    )
+    detail = AnnouncementDetail(
+        supply_location="경기 의정부시",
+        supply_scale="아파트 1세대",
+        notice_url="https://www.applyhome.co.kr/notice/1",
+        contract_date="2026-05-15 ~ 2026-05-15",
+        move_in_month="2026.06",
+        supply_items=(SupplyItem(housing_type="084.7576A", supply_units="1", sale_price="48,660만원"),),
+    )
+
+    monkeypatch.setattr(
+        "applyhome_alert.fetcher.fetch_announcement_details",
+        lambda items: [items[0].with_detail(detail)],
+    )
+
+    enriched = fetch_announcement_detail(announcement)
+
+    assert enriched == announcement.with_detail(detail)
+
+

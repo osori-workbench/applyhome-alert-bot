@@ -77,6 +77,18 @@ class Announcement:
         return cheapest_item.sale_price or "정보 없음"
 
     @property
+    def title(self) -> str:
+        return self.name
+
+    @property
+    def detail_data(self) -> AnnouncementDetail | None:
+        return self.detail
+
+    @property
+    def supply_items(self) -> tuple[SupplyItem, ...]:
+        return self.detail.supply_items if self.detail else ()
+
+    @property
     def subscription_start_date(self) -> date:
         start_text = self.subscription_period.split("~")[0].strip()
         return date.fromisoformat(start_text)

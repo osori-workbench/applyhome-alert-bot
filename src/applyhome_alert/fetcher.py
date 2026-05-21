@@ -71,6 +71,11 @@ def fetch_rows() -> list[dict[str, str]]:
     return rows
 
 
+def fetch_announcement_detail(item: Announcement) -> Announcement:
+    enriched_items = fetch_announcement_details([item])
+    return enriched_items[0] if enriched_items else item
+
+
 def fetch_announcement_details(items: list[Announcement]) -> list[Announcement]:
     if not items:
         return []
