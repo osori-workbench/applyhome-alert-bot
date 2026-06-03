@@ -88,6 +88,11 @@ class Announcement:
     def supply_items(self) -> tuple[SupplyItem, ...]:
         return self.detail.supply_items if self.detail else ()
 
+    def fetch_detail(self) -> Announcement:
+        from .fetcher import fetch_announcement_detail
+
+        return fetch_announcement_detail(self)
+
     @property
     def subscription_start_date(self) -> date:
         start_text = self.subscription_period.split("~")[0].strip()
