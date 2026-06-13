@@ -4,7 +4,7 @@ import re
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from .models import Announcement
 from .parser import parse_detail_html
@@ -54,18 +54,29 @@ def extract_total_pages_from_html(html: str) -> int:
     return max(page_indexes, default=1)
 
 
+def _fetch_list_page_html(page, url: str) -> str:
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        return page.content()
+    except PlaywrightTimeoutError:
+        page.goto(url, wait_until="commit", timeout=15000)
+        html = page.content()
+        if extract_rows_from_html(html, base_url=BASE_URL) or extract_total_pages_from_html(html) > 1:
+            return html
+        raise
+
+
 def fetch_rows() -> list[dict[str, str]]:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page()
-        page.goto(LIST_URL, wait_until="domcontentloaded")
-        first_html = page.content()
+        first_html = _fetch_list_page_html(page, LIST_URL)
         total_pages = extract_total_pages_from_html(first_html)
         rows = extract_rows_from_html(first_html, base_url=BASE_URL)
 
         for page_index in range(2, total_pages + 1):
-            page.goto(f"{LIST_URL}?pageIndex={page_index}", wait_until="domcontentloaded")
-            rows.extend(extract_rows_from_html(page.content(), base_url=BASE_URL))
+            html = _fetch_list_page_html(page, f"{LIST_URL}?pageIndex={page_index}")
+            rows.extend(extract_rows_from_html(html, base_url=BASE_URL))
 
         browser.close()
     return rows

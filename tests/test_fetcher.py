@@ -1,9 +1,11 @@
 from pathlib import Path
 
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from applyhome_alert.fetcher import (
     _ensure_success_status,
+    _fetch_list_page_html,
     extract_rows_from_html,
     extract_total_pages_from_html,
     fetch_announcement_detail,
@@ -36,6 +38,38 @@ def test_extract_total_pages_from_html_reads_last_page_link() -> None:
 def test_ensure_success_status_raises_for_http_errors() -> None:
     with pytest.raises(RuntimeError):
         _ensure_success_status(500, "boom")
+
+
+class _FakePage:
+    def __init__(self, *, full_html: str, partial_html: str = "<html></html>") -> None:
+        self.calls: list[tuple[str, str, int | None]] = []
+        self._full_html = full_html
+        self._partial_html = partial_html
+        self._current_html = partial_html
+
+    def goto(self, url: str, *, wait_until: str, timeout: int | None = None):
+        self.calls.append((url, wait_until, timeout))
+        if wait_until == "domcontentloaded":
+            self._current_html = self._partial_html
+            raise PlaywrightTimeoutError("timed out waiting for domcontentloaded")
+        self._current_html = self._full_html
+        return None
+
+    def content(self) -> str:
+        return self._current_html
+
+
+def test_fetch_list_page_html_falls_back_to_commit_on_domcontentloaded_timeout() -> None:
+    full_html = Path("tests/fixtures/applyhome_table.html").read_text(encoding="utf-8")
+    page = _FakePage(full_html=full_html)
+
+    html = _fetch_list_page_html(page, "https://www.applyhome.co.kr/list?pageIndex=2")
+
+    assert extract_rows_from_html(html, base_url="https://www.applyhome.co.kr")
+    assert page.calls == [
+        ("https://www.applyhome.co.kr/list?pageIndex=2", "domcontentloaded", 30000),
+        ("https://www.applyhome.co.kr/list?pageIndex=2", "commit", 15000),
+    ]
 
 
 def test_fetch_announcement_detail_returns_single_enriched_item(monkeypatch: pytest.MonkeyPatch) -> None:
