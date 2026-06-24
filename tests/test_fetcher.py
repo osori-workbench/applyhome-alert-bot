@@ -72,6 +72,39 @@ def test_fetch_list_page_html_falls_back_to_commit_on_domcontentloaded_timeout()
     ]
 
 
+class _FakeDelayedPage(_FakePage):
+    def __init__(self, *, full_html: str) -> None:
+        super().__init__(full_html=full_html, partial_html="")
+        self.wait_calls: list[tuple[str, int | None]] = []
+
+    def goto(self, url: str, *, wait_until: str, timeout: int | None = None):
+        self.calls.append((url, wait_until, timeout))
+        if wait_until == "domcontentloaded":
+            self._current_html = ""
+            raise PlaywrightTimeoutError("timed out waiting for domcontentloaded")
+        self._current_html = ""
+        return None
+
+    def wait_for_selector(self, selector: str, *, timeout: int | None = None):
+        self.wait_calls.append((selector, timeout))
+        self._current_html = self._full_html
+        return None
+
+
+def test_fetch_list_page_html_waits_for_rows_after_commit_fallback() -> None:
+    full_html = Path("tests/fixtures/applyhome_table.html").read_text(encoding="utf-8")
+    page = _FakeDelayedPage(full_html=full_html)
+
+    html = _fetch_list_page_html(page, "https://www.applyhome.co.kr/list?pageIndex=52")
+
+    assert extract_rows_from_html(html, base_url="https://www.applyhome.co.kr")
+    assert page.calls == [
+        ("https://www.applyhome.co.kr/list?pageIndex=52", "domcontentloaded", 30000),
+        ("https://www.applyhome.co.kr/list?pageIndex=52", "commit", 15000),
+    ]
+    assert page.wait_calls == [('tr[data-hmno][data-pbno], a[href*="pageIndex="]', 5000)]
+
+
 def test_fetch_announcement_detail_returns_single_enriched_item(monkeypatch: pytest.MonkeyPatch) -> None:
     announcement = Announcement(
         region="경기",

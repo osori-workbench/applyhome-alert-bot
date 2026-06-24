@@ -54,6 +54,13 @@ def extract_total_pages_from_html(html: str) -> int:
     return max(page_indexes, default=1)
 
 
+def _html_has_list_data(html: str) -> bool:
+    return bool(
+        extract_rows_from_html(html, base_url=BASE_URL)
+        or extract_total_pages_from_html(html) > 1
+    )
+
+
 def _fetch_list_page_html(page, url: str) -> str:
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -61,7 +68,11 @@ def _fetch_list_page_html(page, url: str) -> str:
     except PlaywrightTimeoutError:
         page.goto(url, wait_until="commit", timeout=15000)
         html = page.content()
-        if extract_rows_from_html(html, base_url=BASE_URL) or extract_total_pages_from_html(html) > 1:
+        if _html_has_list_data(html):
+            return html
+        page.wait_for_selector('tr[data-hmno][data-pbno], a[href*="pageIndex="]', timeout=5000)
+        html = page.content()
+        if _html_has_list_data(html):
             return html
         raise
 
